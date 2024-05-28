@@ -9,6 +9,11 @@ import { notesCollection, db } from "./firebase"
 export default function App() {
     const [notes, setNotes] = React.useState([])
     const [currentNoteId, setCurrentNoteId] = React.useState("")
+    // used to minimize request per second through debouncing 
+    const [tempNoteText, settempNoteText] = React.useState("")
+
+    // sort the notes in descedning order from most recent updates to lease recent 
+    const sortedNotes = notes.sort((a, b) => b.updatedAt - a.updatedAt)
     
     const currentNote = 
         notes.find(note => note.id === currentNoteId) 
@@ -23,6 +28,7 @@ export default function App() {
                 ...doc.data(),
                 id: doc.id,
             }))
+
             setNotes(notesArr)
         })
         //onSnapshot returns a function that we can use to essentially unsubscribe from the event listener for the db when the component unmounts
@@ -35,10 +41,28 @@ export default function App() {
         }
     }, [notes])
 
+    // setting the temp note body with the currentNote body (if exists) so we can update Editor everytime a change is made to the currentNote. 
+    React.useEffect(() => {
+        if (currentNote) {
+            setTempNoteText(currentNote.body)
+        }
+    }, [currentNote])
+    
+    /* useEfffect runs everytime tempNoteText changes, setTimeout is used for the debouncing, it will cause there to be a 500 ms wait between each keystroke to update the firebase db. If there is a keystroke before the 500ms is up then it will re-run the useEffect which will cancel the previous update request through clearTimeout and restart the process. */ 
+    React.useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            if (tempNoteText !== currentNote.body){
+                updateNote(tempNoteText)
+            }
+        }, 500);
+        return () => clearTimeout(timeoutId)
+    }, [tempNoteText])
+
     async function createNewNote() {
         const newNote = {
             body: "# Type your markdown note's title here",
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            updatedAt: Date.now()
         }
         //"addDoc" pushes the the newNote to the collection that we provided in the first arguement it then returns a promise which also returns a reference to the new document that was created. 
         const newNoteRef = await addDoc(notesCollection, newNote)
@@ -70,15 +94,15 @@ export default function App() {
                         className="split"
                     >
                         <Sidebar
-                            notes={notes}
+                            notes={sortedNotes}
                             currentNote={currentNote}
                             setCurrentNoteId={setCurrentNoteId}
                             newNote={createNewNote}
                             deleteNote={deleteNote}
                         />
                         <Editor
-                            currentNote={currentNote}
-                            updateNote={updateNote}
+                            tempNoteText={tempNoteText}
+                            setTempNoteText={setTempNoteText}
                         />
                     </Split>
                     :
